@@ -1,45 +1,58 @@
 /**
- * Shrug — the template plugin.
+ * Jellyfin, inside Tumult.
  *
- * Replace this file with your own. It stays small on purpose: one command, one
- * stylesheet, no Vue import. A logic-only plugin like this one runs in the
- * **sandbox lane** (Tumult derives that from the permissions below — you never
- * declare it), which means it cannot touch the DOM even if it wanted to.
+ * A **workspace pane**: a tile in the guild rail that opens the plugin's own
+ * region of the app — a left nav (Home, Artists, Albums, Playlists), a content
+ * area, and a player bar along the bottom.
  *
- * The manifest in `tumult.plugin.json` at the repository root is the same
- * manifest declared here; keep the two in step (the release workflow copies
- * this one into the release asset).
+ * The pane contributes live components, so it runs in the **trusted lane**
+ * (Tumult derives the lane from the permissions below — you never declare
+ * it). That means the bundle runs in the page, at the app's trust level, and
+ * shares the app's Vue instance.
+ *
+ * What the plugin asks for, and why:
+ *
+ *   - `workspace-panes` — the pane itself: the rail tile and the three slots.
+ *   - `styles`          — the stylesheet, which travels inside the bundle.
+ *
+ * It does **not** ask for `commands` or `timeline-renderers`: a slash command
+ * that opened a pane would be a nicety, not a need, and the fewer permissions
+ * a plugin asks for, the less the consent screen has to warn about.
  */
 import type { Plugin, PluginManifest } from "@tumult/ui";
 
+import JellyfinContent from "./components/JellyfinContent.vue";
+import JellyfinPlayer from "./components/JellyfinPlayer.vue";
+import JellyfinSidebar from "./components/JellyfinSidebar.vue";
+import { STYLESHEET } from "./styles.ts";
+
 const manifest: PluginManifest = {
-    id: "cc.example.shrug",
-    name: "Shrug",
+    id: "com.jackgraddon.tumult.jellyfin",
+    name: "Jellyfin",
     version: "1.0.0",
-    author: "You",
-    description: "Append ¯\\_(ツ)_/¯ to a message with /shrug.",
-    permissions: ["commands", "styles"],
-    // Leave this out until you have published a release with it: Tumult
-    // refuses to install a plugin that asks for a newer API than it provides.
-    // minUI: "1.0.0",
+    author: "Jack Graddon",
+    description: "Your Jellyfin library in Tumult: artists, albums, playlists and a player.",
+    permissions: ["workspace-panes", "styles"],
+    // The pane extension point arrived in plugin API 1.1.0; an older Tumult
+    // would refuse the install rather than show a plugin it cannot host.
+    minUI: "1.1.0",
 };
 
 export const plugin: Plugin = {
     manifest,
 
     install(ctx) {
-        ctx.injectStylesheet(`
-            .cc-example-shrug-message { font-family: var(--font-family-monospace, monospace); }
-        `);
+        // The stylesheet is a string inside the bundle, not a sibling file:
+        // a release attaches `plugin.js` and nothing else.
+        ctx.injectStylesheet(STYLESHEET);
 
-        ctx.addCommand({
-            name: "shrug",
-            description: "Append ¯\\_(ツ)_/¯ to your message",
-            usage: "<text>",
-            run: ({ args, roomId, client }) => {
-                const body = args ? `${args} ¯\\_(ツ)_/¯` : "¯\\_(ツ)_/¯";
-                return client.send(roomId, body);
-            },
+        ctx.addPane({
+            id: "com.jackgraddon.tumult.jellyfin",
+            label: "Jellyfin",
+            icon: "🎵",
+            content: JellyfinContent,
+            sidebar: JellyfinSidebar,
+            footer: JellyfinPlayer,
         });
     },
 };

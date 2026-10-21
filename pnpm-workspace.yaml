@@ -1,0 +1,7 @@
+packages:
+  - "."
+
+# esbuild is Vite's bundler; its postinstall fetches the platform binary, so
+# without this the build cannot run.
+allowBuilds:
+  esbuild: true

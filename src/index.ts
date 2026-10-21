@@ -29,9 +29,9 @@ import { STYLESHEET } from "./styles.ts";
 const manifest: PluginManifest = {
     id: "com.jackgraddon.tumult.jellyfin",
     name: "Jellyfin",
-    version: "1.0.0",
+    version: "0.1.0",
     author: "Jack Graddon",
-    description: "Your Jellyfin library in Tumult: artists, albums, playlists and a player.",
+    description: "Your Jellyfin library in Tumult.",
     permissions: ["workspace-panes", "styles"],
     // The pane extension point arrived in plugin API 1.1.0; an older Tumult
     // would refuse the install rather than show a plugin it cannot host.

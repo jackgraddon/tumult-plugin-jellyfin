@@ -59,6 +59,43 @@ single-file component calls internal helpers — `openBlock`,
 Re-run `pnpm shim` after changing the `vue` dependency; CI checks that the
 committed shim still matches.
 
+## Keeping up with the template
+
+This plugin started as a copy of the [template](https://github.com/jackgraddon/tumult-plugin-template),
+and a copy is just that: an independent repository. It does not update itself,
+so pulling the template's changes in is a deliberate step.
+
+Two ways to do it:
+
+**Add the template as a remote.** The template's own branch is then one
+`fetch` away, and you can take what applies and leave the rest:
+
+```sh
+git remote add template https://github.com/jackgraddon/tumult-plugin-template.git
+git fetch template
+git log --oneline HEAD..template/main       # what the template has gained
+git diff HEAD template/main -- vite.config.ts # what it would change here
+```
+
+From there, merge or cherry-pick the pieces you want.
+
+**Copy the files you need.** Diff against the updated template and copy over
+only the build scripts and configs. For a plugin with this much custom code
+this is usually the safer option: the template's files are generic, and
+taking one wholesale can undo a local decision.
+
+Either way, some things here are deliberate departures from the template, and
+a sync has to put them back:
+
+| file | why it differs |
+| --- | --- |
+| `pnpm-workspace.yaml` | allowlists esbuild's postinstall. Without it pnpm blocks the build script, and every `pnpm` script fails before it starts. |
+| `pnpm-lock.yaml` | committed, so CI's `pnpm install --frozen-lockfile` has a lockfile to check against. |
+| `package.json` | pins `packageManager` (pnpm 11) and `engines`. |
+| `tsconfig.json` | sets `allowImportingTsExtensions`: the sources import with explicit `.ts` extensions, which TypeScript only accepts with it. |
+| `.github/workflows/` | its own CI, and a release workflow that reads the pinned pnpm rather than hard-coding a version. |
+| `vite.config.ts` | the template's stylesheet guard, corrected to look for *any* `.css` in `dist/` rather than a fixed name — in library mode Vite names that file after the package, so a check for `plugin.css` would miss it. |
+
 ## Permissions, and why
 
 | Permission | Why |

@@ -1,7 +1,8 @@
+import { readdirSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 
 import vue from "@vitejs/plugin-vue";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 /**
  * Build the plugin bundle.
@@ -10,20 +11,22 @@ import { defineConfig } from "vite";
  * below. That indirection is load-bearing: a plugin must share the host's Vue
  * instance (`provide`/`inject` and reactivity are per-instance), so bundling a
  * second copy of Vue would produce a plugin that renders but cannot talk to the
- * shell. The shim forwards to `globalThis.__tumult.vue`, which the shell
- * installs before it imports any plugin bundle.
+ * shell. The shim forwards to `globalThis.__tumult.vue`, which Tumult installs
+ * before it imports any plugin bundle.
  *
- * Vite is here because the plugin is written as single-file components —
- * esbuild cannot compile an SFC, and a hand-written `render()` function for a
- * media library would be unreadable.
+ * Vite is here because plugins are written as single-file components —
+ * esbuild cannot compile an SFC, and a hand-written `render()` function for
+ * anything beyond a slash command would be unreadable.
  *
  * Output name must match `entry` in `tumult.plugin.json` (and the copy in
- * `src/index.ts`). The release workflow hashes what this writes, and attaches
- * that one file — so the build must not emit a sibling stylesheet: the
- * plugin's CSS travels inside the bundle (see `src/styles.ts`).
+ * `src/index.ts`). The release workflow hashes what this writes and attaches
+ * that one file — so the build must not emit a sibling stylesheet: CSS travels
+ * inside the bundle, injected with `ctx.injectStylesheet()`. The guard below
+ * fails the build if one appears, because a stylesheet the release does not
+ * attach is a silent loss.
  */
 export default defineConfig({
-    plugins: [vue()],
+    plugins: [vue(), refuseSiblingStylesheet()],
     resolve: {
         alias: [
             {
@@ -44,7 +47,43 @@ export default defineConfig({
         target: "es2022",
         minify: "esbuild",
         sourcemap: false,
-        // One file, one stylesheet (none): the release attaches `plugin.js`.
         cssCodeSplit: false,
     },
 });
+
+/**
+ * Refuse a build that emitted a stylesheet beside the bundle.
+ *
+ * The release attaches `plugin.js` and `tumult.plugin.json` — and nothing else.
+ * A `<style>` block in an SFC would be extracted into a sibling stylesheet and
+ * dropped on the floor, so the plugin would ship unstyled with no error
+ * anywhere. Styles belong in the bundle: keep them in a TypeScript string and
+ * hand them to `ctx.injectStylesheet()`.
+ *
+ * The stray file is found by looking for *any* `.css` in `dist/`, not for a
+ * fixed name: in library mode Vite names that file after the package
+ * (`package.json`'s `name`), so a plugin called `tumult-plugin-jellyfin` gets
+ * `dist/tumult-plugin-jellyfin.css` and a check for `dist/plugin.css` would
+ * sail straight past it.
+ */
+function refuseSiblingStylesheet(): Plugin {
+    return {
+        name: "tumult:refuse-sibling-stylesheet",
+        enforce: "post",
+        closeBundle() {
+            const dist = fileURLToPath(new URL("./dist", import.meta.url));
+            let stray: string | undefined;
+            try {
+                stray = readdirSync(dist).find((name) => name.endsWith(".css"));
+            } catch {
+                return; // no dist directory: there is nothing to refuse
+            }
+            if (!stray) return;
+            throw new Error(
+                `The build emitted dist/${stray}, which the release does not attach — ` +
+                    "the plugin would ship unstyled, silently. Keep your CSS in a string " +
+                    "and inject it with ctx.injectStylesheet().",
+            );
+        },
+    };
+}

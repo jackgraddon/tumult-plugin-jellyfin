@@ -1,21 +1,13 @@
 # Jellyfin for Tumult
 
-Your [Jellyfin](https://jellyfin.org) library, inside Tumult — as a tab in the
-guild rail, next to the DMs button.
-
-Open it and you get a left nav (**Home**, **Artists**, **Albums**,
-**Playlists**), a content area, and a player bar along the bottom with
-transport controls and a queue. Home shows three shelves: what you played
-recently, what arrived recently, and what you marked as a favourite.
+Your [Jellyfin](https://jellyfin.org) library, inside Tumult.
 
 ## Requirements
 
 - **Tumult with plugin API 1.1.0 or newer.** The plugin fills a *workspace
   pane* — a region of the shell the plugin occupies — and that extension point
-  arrived in 1.1.0. An older Tumult refuses the install rather than showing a
-  plugin it cannot host.
-- **A Jellyfin server** (10.9 or newer; 12 works too) that this browser can
-  reach — usually `http://<your-server>:8096`.
+  arrived in 1.1.0.
+- **A Jellyfin server** (10.9 or newer).
 
 ## Signing in
 

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
+    workflow_dispatch:
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            # pnpm/action-setup reads `packageManager` (pnpm@11.13.1) from
+            # package.json, so CI uses the exact pinned pnpm — the same one the
+            # lockfile was written by.
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v6
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+                  cache: pnpm
+
+            - name: Install
+              run: pnpm install --frozen-lockfile
+
+            - name: Typecheck
+              run: pnpm typecheck
+
+            # The bundle must stay a single file: a release attaches
+            # `dist/plugin.js` and nothing else, so a stray `plugin.css` would
+            # be a release that installs half-styled.
+            - name: Build
+              run: pnpm build
+
+            - name: Check the bundle is one file
+              run: |
+                  if [ "$(ls dist | wc -l)" != "1" ]; then
+                      echo "::error::dist should hold exactly plugin.js, found: $(ls dist)"
+                      exit 1
+                  fi
+
+            - name: Check the shim matches the installed vue
+              # `pnpm shim` rewrites src/shims/vue.ts; if it differs, the
+              # committed shim has drifted from the vue this build resolves.
+              run: |
+                  pnpm shim
+                  if ! git diff --quiet -- src/shims/vue.ts; then
+                      echo "::error::src/shims/vue.ts is out of date — run 'pnpm shim' and commit the result"
+                      git diff -- src/shims/vue.ts
+                      exit 1
+                  fi

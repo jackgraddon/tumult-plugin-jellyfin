@@ -1,10 +1,11 @@
 {
     "$schema": "./tumult.plugin.schema.json",
-    "id": "cc.example.shrug",
-    "name": "Shrug",
+    "id": "com.jackgraddon.tumult.jellyfin",
+    "name": "Jellyfin",
     "version": "1.0.0",
-    "author": "You",
-    "description": "Append ¯\\_(ツ)_/¯ to a message with /shrug.",
-    "permissions": ["commands", "styles"],
+    "author": "Jack Graddon",
+    "description": "Your Jellyfin library in Tumult: artists, albums, playlists and a player.",
+    "minUI": "1.1.0",
+    "permissions": ["workspace-panes", "styles"],
     "entry": "plugin.js"
 }

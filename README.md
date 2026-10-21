@@ -1,127 +1,95 @@
-# Tumult plugin template
+# Jellyfin for Tumult
 
-A starting point for a [Tumult](https://github.com/jackgraddon/tumult) plugin:
-a manifest, one source file, a bundle step, and a release workflow that
-publishes what Tumult installs.
+Your [Jellyfin](https://jellyfin.org) library, inside Tumult — as a tab in the
+guild rail, next to the DMs button.
 
-## Use it
+Open it and you get a left nav (**Home**, **Artists**, **Albums**,
+**Playlists**), a content area, and a player bar along the bottom with
+transport controls and a queue. Home shows three shelves: what you played
+recently, what arrived recently, and what you marked as a favourite.
 
-1. **Create your repository.** "Use this template" on GitHub, or copy the
-   directory. Your repository URL is what people paste into Tumult.
-2. **Edit `src/index.ts` and `tumult.plugin.json`.** Keep the two manifests in
-   step: `tumult.plugin.json` is what Tumult reads, `src/index.ts` is what your
-   code carries (Tumult checks they agree before running anything).
-3. **Install and build.**
+## Requirements
 
-   ```sh
-   pnpm install
-   pnpm build          # writes dist/plugin.js
-   pnpm typecheck      # your code against the vendored plugin types
-   ```
+- **Tumult with plugin API 1.1.0 or newer.** The plugin fills a *workspace
+  pane* — a region of the shell the plugin occupies — and that extension point
+  arrived in 1.1.0. An older Tumult refuses the install rather than showing a
+  plugin it cannot host.
+- **A Jellyfin server** (10.9 or newer; 12 works too) that this browser can
+  reach — usually `http://<your-server>:8096`.
 
-4. **Tag a release.** Push a tag matching the manifest `version`:
+## Signing in
 
-   ```sh
-   git tag v1.0.0 && git push origin v1.0.0
-   ```
+Two ways in, both of which end up holding a token and nothing else:
 
-   The workflow builds, hashes and attaches `plugin.js` and
-   `tumult.plugin.json`. (Enable Actions in **Settings → Actions** on a fresh
-   repository; template repositories ship with workflows disabled.)
-5. **Install it in Tumult.** Settings → Plugins → paste your repository URL.
-   Tumult finds the release manifest, shows you the consent screen, and
-   verifies the hash before anything runs.
+- **Password** — sent to *your* server and exchanged for an access token. The
+  password is never stored.
+- **API key** — from Jellyfin's dashboard: *Dashboard → Advanced → API Keys*.
+  A key can see your whole library, so treat it like a password.
 
-## What lives where
+The token is kept in this browser's local storage, alongside the server
+address and a device id (so the server sees one device rather than a new one
+on every visit). Anything else — the password, your queue — never leaves.
 
-| path | what it is |
-|---|---|
-| `tumult.plugin.json` | the release manifest — id, permissions, `entry`, and (once released) `integrity`. Validated against `tumult.plugin.schema.json`. |
-| `src/index.ts` | your plugin: a manifest and `install(ctx)`. The template's example is a `/shrug` command. |
-| `src/shims/vue.ts` | the `vue` your bundle builds against — see below. |
-| `types/plugin.d.ts` | the whole plugin API, vendored so you need no Tumult packages installed. **Generated** in the Tumult repo — do not edit it here. |
-| `esbuild.config.mjs` | the bundle step. |
-| `scripts/make-release-manifest.mjs` | computes `integrity` for the built bundle. |
-| `.github/workflows/release.yml` | tag → build → hash → release. |
+If the server has more than one account, the plugin asks which one you mean
+rather than guessing.
 
-## How a plugin talks to Tumult
+## Installing
 
-Your bundle exports a `Plugin`: a manifest plus `install(ctx)`. Everything
-else goes through `ctx` — the chat client, the room selection, media
-resolution, and the six extension points (timeline renderers, composer
-actions, slash commands, member decorations, settings tabs, stylesheets), each
-gated by a **permission** you declare:
+The plugin installs like any other Tumult plugin: point the installer at a
+release that carries `plugin.js` and `tumult.plugin.json`.
 
-```ts
-import type { Plugin } from "@tumult/ui";
+Releases are tagged `v<version>`, where `<version>` matches the `version` in
+`tumult.plugin.json`. Each release attaches exactly two files:
 
-export const plugin: Plugin = {
-    manifest: {
-        id: "cc.example.shrug",
-        name: "Shrug",
-        version: "1.0.0",
-        permissions: ["commands"],
-    },
-    install(ctx) {
-        ctx.addCommand({
-            name: "shrug",
-            description: "Append ¯\\_(ツ)_/¯ to your message",
-            run: ({ args, roomId, client }) =>
-                client.send(roomId, args ? `${args} ¯\\_(ツ)_/¯` : "¯\\_(ツ)_/¯"),
-        });
-    },
-};
+| File | What it is |
+| --- | --- |
+| `plugin.js` | The bundle. One file — the stylesheet travels inside it. |
+| `tumult.plugin.json` | The manifest, with the bundle's `integrity` hash. |
+
+## Developing
+
+```sh
+pnpm install     # esbuild's postinstall is allowlisted in pnpm-workspace.yaml
+pnpm shim        # regenerate src/shims/vue.ts from the installed vue
+pnpm typecheck   # vue-tsc over the sources and the single-file components
+pnpm build       # -> dist/plugin.js
+pnpm release:dry # build, then write dist/tumult.plugin.json with the hash
 ```
 
-Declare every permission you use. An undeclared one is not a warning: the call
-throws and the install is rolled back. An unknown one refuses the install
-outright, because Tumult can only ask the user to consent to capabilities it
-can name.
+`pnpm shim` deserves a word. A plugin must share the **host's** Vue instance —
+`provide`/`inject` and the reactivity system are per-instance, so a plugin
+that bundled its own copy would render but could not talk to the shell. So the
+build aliases `vue` to `src/shims/vue.ts`, which forwards to the runtime the
+shell publishes on `globalThis.__tumult.vue`. The shim is generated from the
+installed `vue` package (rather than hand-written) because a compiled
+single-file component calls internal helpers — `openBlock`,
+`createElementBlock`, `renderList` — that a hand-written list would forget.
+Re-run `pnpm shim` after changing the `vue` dependency; CI checks that the
+committed shim still matches.
 
-### Lanes: sandboxed vs in-page
+## Permissions, and why
 
-Tumult **derives** your lane from your permissions — you never declare it, and
-neither does a reviewer:
+| Permission | Why |
+| --- | --- |
+| `workspace-panes` | The pane itself: the rail tile and its three slots (nav, content, player). |
+| `styles` | The stylesheet, which is injected as a string from inside the bundle. |
 
-| permission | lane |
-|---|---|
-| `commands`, `composer-actions`, `styles` | **sandbox** — your code runs inside a Worker and reaches Tumult only through the message bridge. No DOM, no `window`. |
-| `timeline-renderers`, `member-decorations`, `settings-tabs` | **trusted** — your code runs in the page, at Tumult's own trust level. Tumult warns the user clearly before installing. |
+It asks for nothing else. There is no slash command and no timeline renderer,
+because a pane does not need them — and the fewer permissions a plugin asks
+for, the less the consent screen has to warn about.
 
-Stay in the sandbox if you can. A plugin that only sends messages, reacts,
-transforms text or ships stylesheets can do a lot without ever needing the DOM.
+Because the pane contributes live components, the plugin runs in Tumult's
+**trusted lane** (Tumult derives the lane from the permissions; you never
+declare it). That means the bundle runs in the page, at the app's trust level,
+and shares the app's Vue instance.
 
-### Vue components
+## Notes
 
-A component permission (`timeline-renderers`, `member-decorations`,
-`settings-tabs`) means you contribute a Vue component, which puts you in the
-trusted lane. Import `vue` normally for its types, and build through
-`esbuild.config.mjs`, which aliases `vue` to `src/shims/vue.ts` — that shim
-forwards to the host's Vue instance, because a second copy of Vue in your
-bundle would render but could not `inject()` anything from Tumult.
-
-`vue` is a **devDependency** here on purpose: it is for types only. Do not
-bundle a copy.
-
-### Compatibility
-
-`minUI` (the plugin API) and `minCore` (the chat-client contract) are enforced:
-Tumult refuses to install a plugin asking for a newer version than it
-provides. Omit them until you actually need them. The versions these vendored
-types describe are `1.0.0` and `1.0.0`.
-
-## Versioning and updates
-
-Re-installing is the update path, and it always goes through the consent
-screen — so if a new version asks for permissions the user never agreed to,
-they are asked again. Bump `version` in both manifests and push a new tag.
-
-Your users' trust is bound to a hash, not to your repository name: Tumult
-verifies the bundle against the `integrity` in the release manifest, and
-re-verifies the stored copy on every start. Move a tag or replace a release
-asset and the installs that already exist keep working; new installs get what
-the new release says.
-
-## License
-
-Do whatever you want with this template. Your plugin is yours.
+- **The queue is this device's.** Jellyfin streams one file at a time and has
+  no server-side queue to keep in step with, so "what plays next" lives here.
+- **LAN servers over `http://` work.** Tumult's content security policy allows
+  plain `http` for connections, images and media, because a self-hosted
+  server on your own network is the normal case.
+- **Direct play first, transcoding as a fallback.** The plugin asks the server
+  what it can do with a track; if the file cannot be played as-is, the server
+  transcodes it, and the player says so.

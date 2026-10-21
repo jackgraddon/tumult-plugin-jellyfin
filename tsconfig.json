@@ -1,4 +1,7 @@
 {
+    "//": "Local deviation from the template: this plugin's sources import with",
+    "//2": "explicit '.ts' extensions (the style the Tumult repo uses), which",
+    "//3": "TypeScript only accepts when 'allowImportingTsExtensions' is on.",
     "compilerOptions": {
         "target": "ES2022",
         "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -9,8 +12,8 @@
         "exactOptionalPropertyTypes": true,
         "skipLibCheck": true,
         "isolatedModules": true,
-        "noEmit": true,
         "allowImportingTsExtensions": true,
+        "noEmit": true,
         "types": [],
         "baseUrl": ".",
         "paths": {

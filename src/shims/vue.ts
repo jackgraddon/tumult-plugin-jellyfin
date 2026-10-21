@@ -15,7 +15,7 @@
  * identity-sensitive ones (`Fragment`, `Transition`) are the host's
  * objects, not look-alikes.
  *
- * Import the real `vue` for its TYPES (`import { h } from "vue"` still
+ * Import the real `vue` for your TYPES (`import { h } from "vue"` still
  * typechecks — `vue` is a devDependency); at runtime this file is what
  * ships.
  */

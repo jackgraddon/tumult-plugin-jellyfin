@@ -2,6 +2,16 @@
 
 Your [Jellyfin](https://jellyfin.org) library, inside Tumult.
 
+## What it shows
+
+A music player: artists, albums, playlists, the three shelves on the home
+page, and a queue in the player bar.
+
+A Jellyfin library usually holds films as well as music, and the films are
+left out. The plugin asks the server for music by name, and checks what comes
+back — so a film never reaches the albums, the songs, the shelves or the
+artists, whatever the server felt like returning.
+
 ## Requirements
 
 - **Tumult with plugin API 1.1.0 or newer.** The plugin fills a *workspace

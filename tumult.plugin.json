@@ -2,7 +2,7 @@
     "$schema": "./tumult.plugin.schema.json",
     "id": "com.jackgraddon.tumult.jellyfin",
     "name": "Jellyfin",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "author": "Jack Graddon",
     "description": "Your Jellyfin library in Tumult.",
     "minUI": "1.1.0",

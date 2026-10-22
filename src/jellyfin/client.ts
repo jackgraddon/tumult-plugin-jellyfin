@@ -14,6 +14,7 @@
  *   - **Everything is PascalCase.** The DTOs keep the server's names so
  *     nothing has to be translated on the way through.
  */
+import { isMusic, isMusicAlbum, isMusicArtist, isSong } from "./items.ts";
 import type {
     JellyfinAuthResponse,
     JellyfinBaseItemDto,
@@ -209,21 +210,39 @@ export class JellyfinClient {
 
     // --------------------------------------------------------------- items
 
-    /** Every artist in the library. */
+    /**
+     * Every artist in the library.
+     *
+     * Jellyfin lists the people credited in films alongside the musicians,
+     * and the two are told apart by their kind: a music artist is a
+     * `MusicArtist`, a film credit is a `Person`. A server that reports its
+     * music artists as `Person` too would leave nothing behind, so the
+     * unfiltered list is kept rather than showing an empty page.
+     */
     public async getArtists(): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
             `/Artists?UserId=${encodeURIComponent(this.userId)}`,
         );
-        return response.Items ?? [];
+        const all = response.Items ?? [];
+        const musicians = all.filter(isMusicArtist);
+        return musicians.length > 0 ? musicians : all;
     }
 
-    /** Every album in the library. */
+    /**
+     * Every album of music in the library.
+     *
+     * `IncludeItemTypes` takes the server's own names for the kinds of thing
+     * — `MusicAlbum`, not `Album`. A name the server does not know is
+     * dropped without a word, leaving the query with no type filter at all,
+     * and the whole library comes back: films, episodes and songs among the
+     * albums.
+     */
     public async getAlbums(): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
             `/Users/${encodeURIComponent(this.userId)}/Items` +
-                `?IncludeItemTypes=Album&Recursive=true&SortBy=SortName&SortOrder=Ascending`,
+                `?IncludeItemTypes=MusicAlbum&Recursive=true&SortBy=SortName&SortOrder=Ascending`,
         );
-        return response.Items ?? [];
+        return (response.Items ?? []).filter(isMusicAlbum);
     }
 
     /** The albums of one artist. */
@@ -232,7 +251,7 @@ export class JellyfinClient {
             `/Artists/${encodeURIComponent(artistId)}/Albums` +
                 `?UserId=${encodeURIComponent(this.userId)}&SortBy=SortName&SortOrder=Ascending`,
         );
-        return response.Items ?? [];
+        return (response.Items ?? []).filter(isMusicAlbum);
     }
 
     /** Every playlist in the library. */
@@ -244,13 +263,18 @@ export class JellyfinClient {
         return response.Items ?? [];
     }
 
-    /** The items of one playlist. */
+    /**
+     * The items of one playlist.
+     *
+     * A playlist can hold anything the server allows — films, episodes,
+     * home videos — so the songs are picked out here rather than trusted.
+     */
     public async getPlaylistItems(playlistId: string): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
             `/Playlists/${encodeURIComponent(playlistId)}/Items` +
                 `?UserId=${encodeURIComponent(this.userId)}`,
         );
-        return response.Items ?? [];
+        return (response.Items ?? []).filter(isSong);
     }
 
     /** The tracks of one album. */
@@ -260,7 +284,7 @@ export class JellyfinClient {
                 `?ParentId=${encodeURIComponent(albumId)}&IncludeItemTypes=Audio` +
                 `&SortBy=ParentIndexNumber,IndexNumber&SortOrder=Ascending`,
         );
-        return response.Items ?? [];
+        return (response.Items ?? []).filter(isSong);
     }
 
     /** What the user played most recently. */
@@ -268,26 +292,33 @@ export class JellyfinClient {
         const response = await this.request<JellyfinItemsResponse>(
             `/Users/${encodeURIComponent(this.userId)}/Items` +
                 `?Filters=IsPlayed&Recursive=true&SortBy=DatePlayed&SortOrder=Descending` +
-                `&Fields=DatePlayed&Limit=${limit}`,
+                `&Fields=DatePlayed&Limit=${limit}&IncludeItemTypes=MusicAlbum,Audio`,
         );
-        return response.Items ?? [];
+        return (response.Items ?? []).filter(isMusic);
     }
 
-    /** What was added to the library most recently. */
+    /**
+     * What was added to the library most recently.
+     *
+     * `/Items/Latest` has no type filter, so it brings back films as well as
+     * albums — and the limit is applied before the filter is. More are asked
+     * for than are shown, so a run of films cannot empty the shelf.
+     */
     public async getRecentlyAdded(limit = 20): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinBaseItemDto[]>(
-            `/Items/Latest?UserId=${encodeURIComponent(this.userId)}&Limit=${limit}`,
+            `/Items/Latest?UserId=${encodeURIComponent(this.userId)}&Limit=${limit * 4}`,
         );
-        return Array.isArray(response) ? response : [];
+        return (Array.isArray(response) ? response : []).filter(isMusic).slice(0, limit);
     }
 
     /** What the user marked as a favourite. */
     public async getFavourites(limit = 30): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
             `/Users/${encodeURIComponent(this.userId)}/Items` +
-                `?Filters=IsFavorite&Recursive=true&Limit=${limit}`,
+                `?Filters=IsFavorite&Recursive=true&Limit=${limit}` +
+                `&IncludeItemTypes=MusicAlbum,Audio,Playlist`,
         );
-        return response.Items ?? [];
+        return (response.Items ?? []).filter(isMusic);
     }
 
     /** One item, by id. */

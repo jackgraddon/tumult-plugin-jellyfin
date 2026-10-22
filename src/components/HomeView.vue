@@ -9,7 +9,19 @@ import type { JellyfinBaseItemDto } from "../jellyfin/types.ts";
 
 const state = jellyfin.state;
 
-function play(item: JellyfinBaseItemDto): void {
+/**
+ * A card in a shelf. A song is played; an album or a playlist is opened,
+ * because neither of those can be streamed on its own.
+ */
+function select(item: JellyfinBaseItemDto): void {
+    if (item.Type === "MusicAlbum") {
+        void jellyfin.openAlbum(item);
+        return;
+    }
+    if (item.Type === "Playlist") {
+        void jellyfin.openPlaylist(item);
+        return;
+    }
     void jellyfin.play(item, state.recentPlayed);
 }
 </script>
@@ -21,7 +33,7 @@ function play(item: JellyfinBaseItemDto): void {
             variant="row"
             :items="state.recentPlayed"
             empty="Nothing played yet."
-            @select="play"
+            @select="select"
         />
     </section>
 
@@ -31,7 +43,7 @@ function play(item: JellyfinBaseItemDto): void {
             variant="row"
             :items="state.recentAdded"
             empty="Nothing new yet."
-            @select="play"
+            @select="select"
         />
     </section>
 
@@ -41,7 +53,7 @@ function play(item: JellyfinBaseItemDto): void {
             variant="row"
             :items="state.favourites"
             empty="No favourites yet."
-            @select="play"
+            @select="select"
         />
     </section>
 </template>

@@ -24,18 +24,23 @@ import type { Plugin, PluginManifest } from "@tumult/ui";
 import JellyfinContent from "./components/JellyfinContent.vue";
 import JellyfinPlayer from "./components/JellyfinPlayer.vue";
 import JellyfinSidebar from "./components/JellyfinSidebar.vue";
+import { startPresence } from "./jellyfin/presence.ts";
 import { STYLESHEET } from "./styles.ts";
 
 const manifest: PluginManifest = {
     id: "com.jackgraddon.tumult.jellyfin",
     name: "Jellyfin",
-    version: "0.1.2",
+    version: "0.2.0",
     author: "Jack Graddon",
     description: "Your Jellyfin library in Tumult.",
     permissions: ["workspace-panes", "styles"],
     // The pane extension point arrived in plugin API 1.1.0; an older Tumult
     // would refuse the install rather than show a plugin it cannot host.
     minUI: "1.1.0",
+    // `client.setOwnPresence` — the status line — arrived in core contract
+    // 1.1.0. An older Tumult refuses the install rather than host a plugin
+    // whose status line could never appear.
+    minCore: "1.1.0",
 };
 
 export const plugin: Plugin = {
@@ -54,6 +59,11 @@ export const plugin: Plugin = {
             sidebar: JellyfinSidebar,
             footer: JellyfinPlayer,
         });
+
+        // Our Matrix status follows the music: "Listening to <song>" while a
+        // track plays, nothing once it stops. The teardown takes the line
+        // down again when the plugin is removed.
+        return startPresence(ctx.client);
     },
 };
 

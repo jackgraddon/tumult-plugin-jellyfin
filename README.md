@@ -7,6 +7,10 @@ Your [Jellyfin](https://jellyfin.org) library, inside Tumult.
 A music player: artists, albums, playlists, the three shelves on the home
 page, and a queue in the player bar.
 
+While a track plays, the plugin also sets your Matrix status to
+**"Listening to <song>"** — the status line other Matrix clients show beside
+your name — and clears it when playback stops.
+
 A Jellyfin library usually holds films as well as music, and the films are
 left out. The plugin asks the server for music by name, and checks what comes
 back — so a film never reaches the albums, the songs, the shelves or the
@@ -14,9 +18,10 @@ artists, whatever the server felt like returning.
 
 ## Requirements
 
-- **Tumult with plugin API 1.1.0 or newer.** The plugin fills a *workspace
-  pane* — a region of the shell the plugin occupies — and that extension point
-  arrived in 1.1.0.
+- **Tumult with plugin API 1.1.0 and core contract 1.1.0 or newer.** The plugin
+  fills a *workspace pane* — a region of the shell the plugin occupies — and
+  that extension point arrived in plugin API 1.1.0. The status line uses
+  `client.setOwnPresence`, which arrived in core contract 1.1.0.
 - **A Jellyfin server** (10.9 or newer).
 
 ## Signing in
@@ -105,6 +110,7 @@ a sync has to put them back:
 | `tsconfig.json` | sets `allowImportingTsExtensions`: the sources import with explicit `.ts` extensions, which TypeScript only accepts with it. |
 | `.github/workflows/` | its own CI, and a release workflow that reads the pinned pnpm rather than hard-coding a version. |
 | `vite.config.ts` | the template's stylesheet guard, corrected to look for *any* `.css` in `dist/` rather than a fixed name — in library mode Vite names that file after the package, so a check for `plugin.css` would miss it. |
+| `types/plugin.d.ts` | the generated plugin API, vendored from the Tumult repo — regenerate it there (`pnpm --filter @tumult/ui emit:types`) and copy it over when the API moves. Never edit it by hand. |
 
 ## Permissions, and why
 
@@ -124,6 +130,11 @@ and shares the app's Vue instance.
 
 ## Notes
 
+- **The status line follows the music.** Playing a track sets
+  `"Listening to <song>"` as your Matrix status; pausing or stopping clears
+  it, and uninstalling the plugin takes it down too. It is a *user-level*
+  status, so it is visible in other Matrix clients as well — and the last
+  device to write it wins.
 - **The queue is this device's.** Jellyfin streams one file at a time and has
   no server-side queue to keep in step with, so "what plays next" lives here.
 - **LAN servers over `http://` work.** Tumult's content security policy allows

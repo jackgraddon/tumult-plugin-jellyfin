@@ -29,7 +29,7 @@ import { STYLESHEET } from "./styles.ts";
 const manifest: PluginManifest = {
     id: "com.jackgraddon.tumult.jellyfin",
     name: "Jellyfin",
-    version: "0.1.0",
+    version: "0.1.2",
     author: "Jack Graddon",
     description: "Your Jellyfin library in Tumult.",
     permissions: ["workspace-panes", "styles"],

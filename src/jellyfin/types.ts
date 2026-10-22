@@ -40,6 +40,7 @@ export interface JellyfinBaseItemDto {
     Id: string;
     Name: string;
     Type?: string;
+    MediaType?: string;
     Album?: string | null;
     AlbumArtist?: string | null;
     AlbumId?: string | null;

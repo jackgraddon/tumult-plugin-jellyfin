@@ -12,6 +12,7 @@
         "build": "vite build",
         "typecheck": "vue-tsc -p tsconfig.json --noEmit",
         "shim": "node scripts/gen-vue-shim.mjs",
+        "release": "node scripts/release.mjs",
         "release:dry": "pnpm build && node scripts/make-release-manifest.mjs"
     },
     "devDependencies": {

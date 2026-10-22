@@ -74,6 +74,26 @@ single-file component calls internal helpers — `openBlock`,
 Re-run `pnpm shim` after changing the `vue` dependency; CI checks that the
 committed shim still matches.
 
+## Releasing
+
+```sh
+pnpm release v0.2.0
+```
+
+One sweep: the script writes the version into `tumult.plugin.json` and the
+manifest in `src/index.ts`, commits it, tags `v0.2.0`, and pushes the branch
+and the tag together. It refuses to run on a dirty tree or off `main`, refuses
+a version that is not above the current one or a tag that already exists, and
+runs CI's checks first — shim drift, typecheck, build and hash — so a broken
+bundle never gets a tag.
+
+`pnpm release v0.2.1 --dry-run` does every check and prints the plan without
+writing anything.
+
+Pushing the tag is what publishes: the Release workflow rebuilds from it,
+checks the tag against `tumult.plugin.json`, and attaches `plugin.js` and the
+hashed release manifest to the GitHub release.
+
 ## Keeping up with the template
 
 This plugin started as a copy of the [template](https://github.com/jackgraddon/tumult-plugin-template),

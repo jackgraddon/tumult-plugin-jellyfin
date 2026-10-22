@@ -80,12 +80,13 @@ committed shim still matches.
 pnpm release v0.2.0
 ```
 
-One sweep: the script writes the version into `tumult.plugin.json` and the
+One sweep: the script sets the version in `tumult.plugin.json` and the
 manifest in `src/index.ts`, commits it, tags `v0.2.0`, and pushes the branch
-and the tag together. It refuses to run on a dirty tree or off `main`, refuses
-a version that is not above the current one or a tag that already exists, and
-runs CI's checks first — shim drift, typecheck, build and hash — so a broken
-bundle never gets a tag.
+and the tag together. If the manifests already carry that version it skips the
+empty commit and tags what is there. It refuses to run on a dirty tree or off
+`main`, refuses a version below the current one or a tag that already exists,
+and runs CI's checks first — shim drift, typecheck, build and hash — so a
+broken bundle never gets a tag.
 
 `pnpm release v0.2.1 --dry-run` does every check and prints the plan without
 writing anything.

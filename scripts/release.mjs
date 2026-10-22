@@ -8,7 +8,9 @@
  * reads) and the manifest literal in `src/index.ts` (what the bundle carries,
  * so the running plugin can report itself). They must agree, so this script
  * writes both, commits them as `chore(release): v<version>`, tags that commit
- * `v<version>`, and pushes the branch and the tag atomically.
+ * `v<version>`, and pushes the branch and the tag atomically. When the
+ * manifests already carry the version (it was bumped by hand), the empty
+ * commit is skipped and the current commit is tagged.
  *
  * It refuses to start on a dirty tree or off `main`, and it runs the same
  * checks CI does — shim drift, typecheck, a single-file build and its hash —
@@ -106,13 +108,17 @@ try {
     fail(`origin/${BRANCH} has commits this checkout does not. Pull first.`);
 }
 
-const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
+const manifestText = readFileSync(MANIFEST, "utf8");
+const manifest = JSON.parse(manifestText);
 const current = parseVersion(manifest.version);
 if (!current) {
     fail(`${MANIFEST} has a version this script cannot read: ${manifest.version}`);
 }
-if (compare(next, current) <= 0) {
-    fail(`${MANIFEST} is already at ${manifest.version}. Pick a version above it.`);
+if ((manifestText.match(/"version":\s*"[^"]*"/g) ?? []).length !== 1) {
+    fail(`${MANIFEST} has more than one "version" — the script will not guess which is the plugin's.`);
+}
+if (compare(next, current) < 0) {
+    fail(`${MANIFEST} is already at ${manifest.version}; ${version} would go backwards.`);
 }
 
 const source = readFileSync(SOURCE, "utf8");
@@ -145,7 +151,11 @@ run("pnpm", ["typecheck"]);
 run("pnpm", ["release:dry"]);
 
 console.log(`\n${manifest.version} → ${version}`);
-console.log(`  commit   chore(release): ${tag}`);
+console.log(
+    compare(next, current) === 0
+        ? "  commit   (none — the manifests already say so)"
+        : `  commit   chore(release): ${tag}`,
+);
 console.log(`  tag      ${tag}`);
 console.log(`  push     origin ${BRANCH} + ${tag}`);
 
@@ -155,13 +165,18 @@ if (dryRun) {
 }
 
 // ── Write, commit, tag, push ───────────────────────────────────────────────
-// Spread keeps every other key in place; `version` keeps its position too.
-writeFileSync(MANIFEST, `${JSON.stringify({ ...manifest, version }, null, 4)}\n`);
+// Replace the value in place rather than re-serialising: the manifest's
+// formatting (inline arrays, key order) should not churn in a release commit.
+writeFileSync(MANIFEST, manifestText.replace(/"version":\s*"[^"]*"/, `"version": "${version}"`));
 writeFileSync(SOURCE, source.replace(/version:\s*"[^"]*"/, `version: "${version}"`));
 
-console.log("\nCommitting…");
-run("git", ["add", MANIFEST, SOURCE]);
-run("git", ["commit", "-m", `chore(release): ${tag}`]);
+if (git("status", "--porcelain", "--", MANIFEST, SOURCE) === "") {
+    console.log("\nThe manifests already carry this version — tagging the current commit.");
+} else {
+    console.log("\nCommitting…");
+    run("git", ["add", MANIFEST, SOURCE]);
+    run("git", ["commit", "-m", `chore(release): ${tag}`]);
+}
 
 console.log("Tagging…");
 run("git", ["tag", "-a", tag, "-m", tag]);

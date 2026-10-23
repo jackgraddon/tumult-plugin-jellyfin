@@ -7,17 +7,26 @@
  * API key can see more than one account, the form asks which one instead of
  * guessing.
  */
-import { ref } from "vue";
+import { ref, watch } from "vue";
 
 import { jellyfin } from "../jellyfin/store.ts";
 
+const state = jellyfin.state;
+
 const mode = ref<"password" | "apiKey">("password");
-const baseUrl = ref("");
+const baseUrl = ref(state.address);
 const username = ref("");
 const password = ref("");
 const apiKey = ref("");
 
-const state = jellyfin.state;
+// A saved address that cannot be used from this page (or one the user just
+// tried) arrives here, so fixing it is one edit.
+watch(
+    () => state.address,
+    (value) => {
+        baseUrl.value = value;
+    },
+);
 
 function submit(): void {
     if (mode.value === "password") {
@@ -32,9 +41,11 @@ function submit(): void {
     <div class="jf-connect">
         <h2>Jellyfin</h2>
         <p class="jf-note">
-            Point this at your Jellyfin server. The address is the one your server
-            uses — often <code>http://localhost:8096</code> on the machine itself, or
-            <code>http://192.168.x.x:8096</code> from another device on the network.
+            Point this at your Jellyfin server, with the scheme this page uses:
+            Tumult is served over HTTPS, so the address is usually
+            <code>https://…</code>. A Tumult served over HTTP — local
+            development, or a copy you host yourself — can still use
+            <code>http://localhost:8096</code>.
         </p>
 
         <p v-if="state.error" class="jf-error" role="alert">{{ state.error }}</p>
@@ -86,7 +97,7 @@ function submit(): void {
                     type="text"
                     inputmode="url"
                     autocomplete="url"
-                    placeholder="http://localhost:8096"
+                    placeholder="https://jellyfin.example.com"
                 />
             </div>
 

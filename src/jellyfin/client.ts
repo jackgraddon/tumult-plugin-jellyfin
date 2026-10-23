@@ -44,12 +44,55 @@ const CLIENT_NAME = "Tumult Jellyfin";
 const DEVICE_NAME = "Tumult";
 const CLIENT_VERSION = "1.0.0";
 
-/** Trim a user-typed server address into something a URL can be built on. */
-export function normalizeBaseUrl(input: string): string {
+/** The scheme the page itself was served with. HTTPS everywhere but local dev. */
+function pageScheme(): string {
+    return globalThis.location?.protocol === "http:" ? "http:" : "https:";
+}
+
+/**
+ * Trim a user-typed server address into something a URL can be built on.
+ *
+ * A bare host inherits the page's scheme: `media.example.com` becomes
+ * `https://media.example.com` on the deployed app and `http://…` on a local
+ * dev server. Typing a scheme still works, and is the only way to ask for the
+ * other one.
+ */
+export function normalizeBaseUrl(input: string, scheme = pageScheme()): string {
     const trimmed = input.trim();
     if (trimmed === "") return "";
-    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `${scheme}//${trimmed}`;
     return withScheme.replace(/\/+$/, "");
+}
+
+/**
+ * Why this address cannot be used from this page, or null.
+ *
+ * Browsers refuse to load plain-HTTP resources from an HTTPS page — mixed
+ * content — and that is true of every browser, for API calls, artwork and
+ * audio alike. Fail here, in a sentence, instead of letting the request die
+ * with an opaque network error.
+ *
+ * The rule is parity with the page, not a ban on http: a Tumult served over
+ * HTTP (local development, or a self-hosted copy) can still talk to
+ * `http://localhost:8096`.
+ *
+ * Plain-HTTP LAN servers from an HTTPS Tumult are not supported yet: it would
+ * take a mechanism every browser has, and today the local-network permission
+ * is partial and browser-specific. Parked deliberately — see the README.
+ */
+export function schemeProblem(baseUrl: string, page = pageScheme()): string | null {
+    if (page !== "https:") return null;
+    let parsed: URL;
+    try {
+        parsed = new URL(baseUrl);
+    } catch {
+        return null;
+    }
+    if (parsed.protocol !== "http:") return null;
+    return (
+        "Tumult is served over HTTPS, so Jellyfin must be reached over HTTPS too — " +
+        `browsers block plain HTTP from an HTTPS page. Use https://${parsed.host} instead.`
+    );
 }
 
 export class JellyfinClient {

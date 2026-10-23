@@ -23,6 +23,12 @@ artists, whatever the server felt like returning.
   that extension point arrived in plugin API 1.1.0. The status line uses
   `client.setOwnPresence`, which arrived in core contract 1.1.0.
 - **A Jellyfin server** (10.9 or newer).
+- **An HTTPS address for Jellyfin.** Tumult in production is served over
+  HTTPS, and browsers refuse to load plain-HTTP requests from an HTTPS page.
+  That covers the API calls, the artwork and the audio alike, so the plugin
+  checks the scheme up front and refuses an `http://` address rather than
+  letting the request die with a network error. See
+  [Jellyfin on the LAN](#jellyfin-on-the-lan) for keeping local speed.
 
 ## Signing in
 
@@ -39,6 +45,29 @@ on every visit). Anything else — the password, your queue — never leaves.
 
 If the server has more than one account, the plugin asks which one you mean
 rather than guessing.
+
+## Jellyfin on the LAN
+
+A server in the same house is the normal case, and it can still be fast: what
+it needs is an HTTPS name that resolves to it locally, not a plain-HTTP
+address.
+
+- **Split-horizon DNS.** Give Jellyfin a public name with a real certificate
+  (say `media.example.com`) and have your router or local DNS resolve that name
+  to the server's LAN address at home. At home the traffic never leaves the
+  network; away it goes wherever the name points. One address, nothing to
+  switch.
+- **A certificate without exposure.** A reverse proxy on the server (Caddy,
+  nginx) can obtain a Let's Encrypt certificate through the DNS-01 challenge,
+  which needs no inbound port. A public DNS record pointing at a private
+  address does no harm.
+- **Tailscale**, or another mesh VPN, does both halves: `tailscale serve`
+  publishes the server at `https://<machine>.<tailnet>.ts.net` with a trusted
+  certificate, reachable from every device on the tailnet.
+
+The rule the plugin enforces is parity with the page, not a ban on HTTP: a
+Tumult served over HTTP — local development, or a copy you host yourself — can
+still talk to `http://localhost:8096` or `http://192.168.x.x:8096`.
 
 ## Installing
 
@@ -158,9 +187,25 @@ and shares the app's Vue instance.
   device to write it wins.
 - **The queue is this device's.** Jellyfin streams one file at a time and has
   no server-side queue to keep in step with, so "what plays next" lives here.
-- **LAN servers over `http://` work.** Tumult's content security policy allows
-  plain `http` for connections, images and media, because a self-hosted
-  server on your own network is the normal case.
+- **HTTPS addresses only, for now.** A Tumult served over HTTPS cannot reach a
+  plain-`http` Jellyfin: browsers treat the request as mixed content and block
+  it, and the artwork and audio with it. The plugin says so before trying
+  instead of surfacing "network error". Plain-HTTP LAN servers are parked until
+  there is a way to reach them that works in every browser — see
+  [below](#not-yet-plain-http-lan-servers).
 - **Direct play first, transcoding as a fallback.** The plugin asks the server
   what it can do with a track; if the file cannot be played as-is, the server
   transcodes it, and the player says so.
+
+## Not yet: plain-HTTP LAN servers
+
+Reaching `http://10.0.0.10:8096` from an HTTPS Tumult is the one case this
+plugin does not support. Doing it properly needs a mechanism every browser has;
+today the local-network permission that relaxes mixed-content blocking is
+partial and browser-specific, and relying on it would mean shipping a feature
+that works for some people and silently fails for everyone else.
+
+So it is parked, not worked around. The answer for now is the HTTPS name
+described in [Jellyfin on the LAN](#jellyfin-on-the-lan): same speed at home,
+and it works in every browser.
+

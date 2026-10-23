@@ -9,7 +9,7 @@
 import { reactive } from "vue";
 
 import { player } from "./audio.ts";
-import { JellyfinClient, normalizeBaseUrl } from "./client.ts";
+import { JellyfinClient, normalizeBaseUrl, schemeProblem } from "./client.ts";
 import {
     clearConfig,
     deviceId,
@@ -32,6 +32,8 @@ export interface JellyfinState {
     busy: boolean;
     /** The last failure, in a sentence. */
     error: string | null;
+    /** The address the connect form starts with (a saved one, or the last tried). */
+    address: string;
     /** The server's name, once we know it. */
     serverName: string | null;
     /** The account in use. */
@@ -67,6 +69,7 @@ const state = reactive<JellyfinState>({
     connected: false,
     busy: false,
     error: null,
+    address: "",
     serverName: null,
     userName: null,
     authMethod: null,
@@ -113,6 +116,15 @@ export const jellyfin = {
         restored = true;
         const config = loadConfig();
         if (!config) return;
+        const problem = schemeProblem(config.baseUrl);
+        if (problem) {
+            // The saved address cannot be reached from this page (an HTTPS
+            // app cannot talk to plain HTTP). Keep it in the form so switching
+            // to https:// is one edit, and say why instead of failing silently.
+            state.address = config.baseUrl;
+            state.error = problem;
+            return;
+        }
         try {
             const client = new JellyfinClient({
                 baseUrl: config.baseUrl,
@@ -139,8 +151,14 @@ export const jellyfin = {
     /** Sign in with a password. */
     async connectWithPassword(baseUrl: string, username: string, password: string): Promise<void> {
         const normalized = normalizeBaseUrl(baseUrl);
+        state.address = normalized;
         if (normalized === "") {
             state.error = "Enter the address of your Jellyfin server.";
+            return;
+        }
+        const problem = schemeProblem(normalized);
+        if (problem) {
+            state.error = problem;
             return;
         }
         state.busy = true;
@@ -166,8 +184,14 @@ export const jellyfin = {
     /** Sign in with an API key. */
     async connectWithApiKey(baseUrl: string, apiKey: string): Promise<void> {
         const normalized = normalizeBaseUrl(baseUrl);
+        state.address = normalized;
         if (normalized === "") {
             state.error = "Enter the address of your Jellyfin server.";
+            return;
+        }
+        const problem = schemeProblem(normalized);
+        if (problem) {
+            state.error = problem;
             return;
         }
         state.busy = true;
@@ -336,6 +360,7 @@ function resetConnection(): void {
     state.userName = null;
     state.serverName = null;
     state.authMethod = null;
+    state.address = "";
     state.availableUsers = [];
     state.artistId = null;
     state.albumId = null;
@@ -464,6 +489,12 @@ async function loadPlaylists(): Promise<void> {
 
 /** Turn an unknown failure into a sentence. */
 function describe(error: unknown, fallback: string): string {
+    if (error instanceof TypeError) {
+        // What `fetch` throws when the request never reached an answer: a
+        // wrong address, a server that is down, or a network that cannot see
+        // it. Name the likely cause without guessing at the browser's reason.
+        return "Could not reach the server. Check the address, and that this device can reach it.";
+    }
     if (error instanceof Error && error.message !== "") return error.message;
     return fallback;
 }

@@ -60,11 +60,29 @@ export interface JellyfinBaseItemDto {
     MediaTags?: { Channels?: number | null; Bitrate?: number | null };
 }
 
-/** A paged list of items. */
+/** A paged list of items, as the server sends one. */
 export interface JellyfinItemsResponse {
     Items: JellyfinBaseItemDto[];
     TotalRecordCount?: number;
     StartIndex?: number;
+}
+
+/**
+ * A fetched page, with the total behind it.
+ *
+ * The UI loads a window at a time rather than the whole library, and `total`
+ * is the count it can page to — enough to know there is more to fetch and to
+ * stop the scroll spinner when the end is reached.
+ */
+export interface JellyfinPaged<T> {
+    items: T[];
+    total: number;
+}
+
+/** How far and how far to page a listing. */
+export interface JellyfinPageOptions {
+    start?: number;
+    limit?: number;
 }
 
 /** The result of a password sign-in. */

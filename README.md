@@ -43,6 +43,16 @@ The token is kept in this browser's local storage, alongside the server
 address and a device id (so the server sees one device rather than a new one
 on every visit). Anything else — the password, your queue — never leaves.
 
+Moving between the shelves and the library does not re-download what a request
+a moment ago already returned: the lists are kept in local storage, capped at
+about 2 MB and in the least-recently-used order, so a large library loads fast
+the second time and moving away and back is instant. It is *library metadata
+only* — the shape of your own library — and it is cleared when you disconnect.
+The **Settings** page shows how much it holds and lets you clear it, or refresh
+the library it serves. Because it lives in `localStorage`, it shares the browser's
+storage with Tumult itself, so the cap (and a fail-soft write) keep it from
+crowding the app out.
+
 If the server has more than one account, the plugin asks which one you mean
 rather than guessing.
 
@@ -187,6 +197,14 @@ and shares the app's Vue instance.
   device to write it wins.
 - **The queue is this device's.** Jellyfin streams one file at a time and has
   no server-side queue to keep in step with, so "what plays next" lives here.
+- **Big libraries stay smooth.** The three big lists — artists, albums, and an
+  artist's albums — are loaded in pages, and only the rows on screen are drawn,
+  so the DOM holds a window, not the whole library, and a thousand albums does
+  not hang the page. Moving between the shelves reuses what was just fetched
+  (see [above](#signing-in)) rather than re-downloading it.
+- **The Settings page.** It holds the one thing a plugin can forget about on its
+  own — its cache: how much it holds, and the buttons to clear it, to refresh
+  the library it serves, and to disconnect.
 - **HTTPS addresses only, for now.** A Tumult served over HTTPS cannot reach a
   plain-`http` Jellyfin: browsers treat the request as mixed content and block
   it, and the artwork and audio with it. The plugin says so before trying

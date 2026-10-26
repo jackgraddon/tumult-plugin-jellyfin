@@ -73,6 +73,25 @@ export const STYLESHEET = `
     gap: var(--space-3);
 }
 
+/* A grid that virtualizes its rows: a spacer holds the full height and a window
+   of the visible rows floats in it. */
+.jf-grid-virtual {
+    min-width: 0;
+}
+
+.jf-virtual {
+    position: relative;
+}
+
+.jf-load {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: 48px;
+    padding: var(--space-3) 0 var(--space-1);
+}
+
 .jf-row-scroll {
     display: flex;
     gap: var(--space-2);
@@ -257,6 +276,16 @@ export const STYLESHEET = `
     background: transparent;
 }
 
+.jf-button-danger {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.jf-button-danger:hover {
+    background: var(--danger-bg, var(--surface-hover));
+    color: var(--danger);
+}
+
 .jf-input {
     width: 100%;
     min-height: var(--control-md);
@@ -379,6 +408,83 @@ export const STYLESHEET = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* The settings surface — server, cache, and the way out. */
+.jf-settings {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: var(--space-1) 0 var(--space-5);
+}
+
+.jf-settings-group {
+    margin-bottom: var(--space-5);
+    padding: var(--space-3) var(--space-4);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--surface-inset);
+}
+
+.jf-settings-title {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-secondary);
+}
+
+.jf-settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.jf-settings-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+}
+
+.jf-settings-row dt {
+    color: var(--text-muted);
+}
+
+.jf-settings-row dd {
+    margin: 0;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.jf-settings-size {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+}
+
+.jf-settings-size-label {
+    color: var(--text-muted);
+}
+
+.jf-settings-size-value {
+    font-variant-numeric: tabular-nums;
+}
+
+.jf-settings-actions {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.jf-settings-disconnect {
+    width: 100%;
+    margin-top: 0;
 }
 
 /* The connect form. */

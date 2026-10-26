@@ -5,7 +5,7 @@
  * Which view is showing is the store's business, not this component's: the
  * left nav and the player both read the same state.
  */
-import { computed, onMounted } from "vue";
+import { computed, onMounted, provide, ref } from "vue";
 
 import { jellyfin } from "../jellyfin/store.ts";
 import type { JellyfinBaseItemDto } from "../jellyfin/types.ts";
@@ -15,9 +15,15 @@ import ArtistsView from "./ArtistsView.vue";
 import ConnectView from "./ConnectView.vue";
 import HomeView from "./HomeView.vue";
 import PlaylistsView from "./PlaylistsView.vue";
+import SettingsView from "./SettingsView.vue";
+import { SCROLL_KEY } from "./symbols.ts";
 import TrackTable from "./TrackTable.vue";
 
 const state = jellyfin.state;
+
+/** The element the grids scroll in, handed down so a grid can measure it. */
+const scrollEl = ref<HTMLElement | null>(null);
+provide(SCROLL_KEY, () => scrollEl.value);
 
 /** Whether an album or a playlist is open. */
 const detail = computed(() => state.albumId !== null || state.playlistId !== null);
@@ -53,7 +59,7 @@ function play(item: JellyfinBaseItemDto): void {
                 <span v-if="state.busy" class="jf-note">Loading…</span>
             </header>
 
-            <div class="jf-scroll">
+            <div class="jf-scroll" ref="scrollEl">
                 <p v-if="state.error" class="jf-error" role="alert">{{ state.error }}</p>
 
                 <TrackTable v-if="detail" :items="state.tracks" @play="play" />
@@ -61,6 +67,7 @@ function play(item: JellyfinBaseItemDto): void {
                 <ArtistsView v-else-if="state.view === 'artists'" />
                 <AlbumsView v-else-if="state.view === 'albums'" />
                 <PlaylistsView v-else-if="state.view === 'playlists'" />
+                <SettingsView v-else-if="state.view === 'settings'" />
             </div>
         </template>
 

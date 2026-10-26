@@ -23,7 +23,7 @@ const emit = defineEmits<{ select: [item: JellyfinBaseItemDto] }>();
 const art = computed(() => {
     const client = currentClient();
     if (!client) return "";
-    return client.imageUrl(props.item, "Primary", 320);
+    return client.imageUrl(props.item, "Primary", 300);
 });
 
 const hasArt = computed(() => Boolean(props.item.ImageTags?.Primary));

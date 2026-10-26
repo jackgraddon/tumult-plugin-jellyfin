@@ -12,7 +12,10 @@ function open(item: JellyfinBaseItemDto): void {
 <template>
     <MediaGrid
         :items="jellyfin.state.artists"
+        :has-more="jellyfin.state.artists.length < jellyfin.state.artistsTotal"
+        :loading-more="jellyfin.state.artistsLoadingMore"
         empty="No artists in this library."
         @select="open"
+        @load-more="jellyfin.loadMoreArtists()"
     />
 </template>

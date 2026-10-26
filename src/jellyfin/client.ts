@@ -15,11 +15,14 @@
  *     nothing has to be translated on the way through.
  */
 import { isMusic, isMusicAlbum, isMusicArtist, isSong } from "./items.ts";
+import { cache } from "./cache.ts";
 import type {
     JellyfinAuthResponse,
     JellyfinBaseItemDto,
     JellyfinImageType,
     JellyfinItemsResponse,
+    JellyfinPaged,
+    JellyfinPageOptions,
     JellyfinPlaybackInfo,
     JellyfinPublicSystemInfo,
     JellyfinUserDto,
@@ -43,6 +46,34 @@ export interface JellyfinClientOptions {
 const CLIENT_NAME = "Tumult Jellyfin";
 const DEVICE_NAME = "Tumult";
 const CLIENT_VERSION = "1.0.0";
+
+/**
+ * Options for a request: whether it may be served from, or written to, the
+ * cache. Read listings opt in by default; a report or a sign-in never.
+ */
+export interface RequestOptions {
+    /** Skip the cache (writes, playback resolution, one-off fetches). */
+    cache?: boolean;
+}
+
+/**
+ * The fields a card or a row actually draws, so a page of thousands does not
+ * carry a body the UI never reads.
+ *
+ * A caveat, the one place a "cheap" optimisation can bite: when `Fields` is
+ * sent, the server returns *only* these plus the few it always sends, so this
+ * list must stay complete of what the components read. The components
+ * degrade gracefully if a field is absent — a glyph where art is missing,
+ * `0:00` where a length is — so a gap shows a little less, never a crash.
+ */
+const LIST_FIELDS =
+    "Name,ChildCount,ImageTags,Album,AlbumArtist,Artists,RunTimeTicks";
+
+/** One page of a listing. */
+const LIST_LIMIT = 100;
+
+/** The image quality, 0–100: small enough to move fast on a row of cards. */
+const IMAGE_QUALITY = 50;
 
 /** The scheme the page itself was served with. HTTPS everywhere but local dev. */
 function pageScheme(): string {
@@ -143,10 +174,16 @@ export class JellyfinClient {
     }
 
     /** The artwork URL for an item. */
-    public imageUrl(item: JellyfinBaseItemDto, type: JellyfinImageType = "Primary", maxWidth = 400): string {
-        const tag = item.ImageTags?.[type === "Thumb" ? "Thumb" : type] ?? item.ImageTags?.Primary;
+    public imageUrl(
+        item: JellyfinBaseItemDto,
+        type: JellyfinImageType = "Primary",
+        maxWidth = 300,
+        quality = IMAGE_QUALITY,
+    ): string {
+        const tag = item.ImageTags?.[type] ?? item.ImageTags?.Primary;
         return this.tokenizedUrl(`/Items/${encodeURIComponent(item.Id)}/Images/${type}`, {
             maxWidth,
+            quality,
             tag: tag ?? undefined,
         });
     }
@@ -168,6 +205,44 @@ export class JellyfinClient {
         return parsed.toString();
     }
 
+    // ----------------------------------------------- listing query builders
+
+    /** Encode a set of query parameters into a `?a=1&b=2` string. */
+    private toQuery(params: Record<string, string | number | undefined>): string {
+        const parts: string[] = [];
+        for (const [key, value] of Object.entries(params)) {
+            if (value === undefined) continue;
+            parts.push(`${key}=${encodeURIComponent(String(value))}`);
+        }
+        return parts.length === 0 ? "" : `?${parts.join("&")}`;
+    }
+
+    /**
+     * Append what every listing shares.
+     *
+     * `ImageTypeLimit=1` and `MaxParentArtists=1` keep each item light — one
+     * image and one parent artist are all the UI shows. The field set narrows
+     * the body to what a card or a row draws. A page (`start`/`limit`) bounds
+     * the server's work and the transfer, so a large library never comes back
+     * whole. A caller that supplies its own `Fields` (such as the "recently
+     * played" shelf, which sorts on `DatePlayed`) is left to it.
+     */
+    private listing(
+        base: string,
+        extra: Record<string, string | number | undefined> = {},
+        opts: JellyfinPageOptions = {},
+    ): string {
+        const params: Record<string, string | number | undefined> = { ...extra };
+        if (params.Fields === undefined) params.Fields = LIST_FIELDS;
+        params.ImageTypeLimit = 1;
+        if (params.MaxParentArtists === undefined) params.MaxParentArtists = 1;
+        if (opts.start !== undefined || opts.limit !== undefined) {
+            params.StartIndex = opts.start ?? 0;
+            params.Limit = opts.limit ?? LIST_LIMIT;
+        }
+        return base + this.toQuery(params);
+    }
+
     // ------------------------------------------------------------ requests
 
     /** The `Authorization` header Jellyfin expects. */
@@ -178,8 +253,45 @@ export class JellyfinClient {
         );
     }
 
-    /** Perform an API request and parse the JSON body. */
-    public async request<T>(path: string, init?: RequestInit): Promise<T> {
+    /**
+     * Perform an API request and parse the JSON body.
+     *
+     * Read requests are served from the cache first, and two reads of the same
+     * URL — a quick tab change, a double tap — coalesce onto one network call.
+     * Writes (a reporting POST, a sign-in) never cache: they carry a body and
+     * each must reach the server.
+     */
+    public async request<T>(path: string, init?: RequestInit, options: RequestOptions = {}): Promise<T> {
+        const method = init?.method ?? "GET";
+        // Only a bodyless GET can be read back identically: a write, or a
+        // request with a body, is not.
+        const cacheable = options.cache !== false && init?.body === undefined && method === "GET";
+        const key = cacheable ? this.url(path) : undefined;
+
+        if (key !== undefined) {
+            const hit = cache.get<T>(key);
+            if (hit !== undefined) return hit;
+            const racing = cache.inflight<T>(key);
+            if (racing !== undefined) return racing;
+        }
+
+        const run = this.fetchJson<T>(path, init);
+        if (key !== undefined) {
+            // Ride the request: on success, cache the parsed body; never cache a
+            // failure (the next attempt may well succeed).
+            const cached = run.then((value) => {
+                if (value !== undefined) cache.set(key, value);
+                return value;
+            });
+            cache.setInflight(key, cached);
+            cached.finally(() => cache.dropInflight(key));
+            return cached;
+        }
+        return run;
+    }
+
+    /** The raw request — the network round-trip and the JSON parse. */
+    private async fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
         const headers = new Headers(init?.headers);
         headers.set("authorization", this.authorization());
         headers.set("accept", "application/json");
@@ -254,25 +366,38 @@ export class JellyfinClient {
     // --------------------------------------------------------------- items
 
     /**
-     * Every artist in the library.
+     * A page of the artists in the library.
      *
      * Jellyfin lists the people credited in films alongside the musicians,
      * and the two are told apart by their kind: a music artist is a
      * `MusicArtist`, a film credit is a `Person`. A server that reports its
      * music artists as `Person` too would leave nothing behind, so the
      * unfiltered list is kept rather than showing an empty page.
+     *
+     * A page is requested, not the whole library: a large library is loaded
+     * in windows the UI draws as it scrolls, and `total` is the count the
+     * server reports behind the first page.
      */
-    public async getArtists(): Promise<JellyfinBaseItemDto[]> {
+    public async getArtists(opts: JellyfinPageOptions = {}): Promise<JellyfinPaged<JellyfinBaseItemDto>> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Artists?UserId=${encodeURIComponent(this.userId)}`,
+            this.listing(
+                `/Artists`,
+                {
+                    UserId: this.userId,
+                    SortBy: "SortName",
+                    SortOrder: "Ascending",
+                },
+                opts,
+            ),
         );
         const all = response.Items ?? [];
         const musicians = all.filter(isMusicArtist);
-        return musicians.length > 0 ? musicians : all;
+        const items = musicians.length > 0 ? musicians : all;
+        return { items, total: response.TotalRecordCount ?? items.length };
     }
 
     /**
-     * Every album of music in the library.
+     * A page of every album of music in the library.
      *
      * `IncludeItemTypes` takes the server's own names for the kinds of thing
      * — `MusicAlbum`, not `Album`. A name the server does not know is
@@ -280,28 +405,52 @@ export class JellyfinClient {
      * and the whole library comes back: films, episodes and songs among the
      * albums.
      */
-    public async getAlbums(): Promise<JellyfinBaseItemDto[]> {
+    public async getAlbums(opts: JellyfinPageOptions = {}): Promise<JellyfinPaged<JellyfinBaseItemDto>> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Users/${encodeURIComponent(this.userId)}/Items` +
-                `?IncludeItemTypes=MusicAlbum&Recursive=true&SortBy=SortName&SortOrder=Ascending`,
+            this.listing(
+                `/Users/${encodeURIComponent(this.userId)}/Items`,
+                {
+                    IncludeItemTypes: "MusicAlbum",
+                    Recursive: "true",
+                    SortBy: "SortName",
+                    SortOrder: "Ascending",
+                },
+                opts,
+            ),
         );
-        return (response.Items ?? []).filter(isMusicAlbum);
+        const items = (response.Items ?? []).filter(isMusicAlbum);
+        return { items, total: response.TotalRecordCount ?? items.length };
     }
 
-    /** The albums of one artist. */
-    public async getArtistAlbums(artistId: string): Promise<JellyfinBaseItemDto[]> {
+    /** A page of the albums of one artist. */
+    public async getArtistAlbums(artistId: string, opts: JellyfinPageOptions = {}): Promise<JellyfinPaged<JellyfinBaseItemDto>> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Artists/${encodeURIComponent(artistId)}/Albums` +
-                `?UserId=${encodeURIComponent(this.userId)}&SortBy=SortName&SortOrder=Ascending`,
+            this.listing(
+                `/Artists/${encodeURIComponent(artistId)}/Albums`,
+                {
+                    UserId: this.userId,
+                    SortBy: "SortName",
+                    SortOrder: "Ascending",
+                },
+                opts,
+            ),
         );
-        return (response.Items ?? []).filter(isMusicAlbum);
+        const items = (response.Items ?? []).filter(isMusicAlbum);
+        return { items, total: response.TotalRecordCount ?? items.length };
     }
 
     /** Every playlist in the library. */
     public async getPlaylists(): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Users/${encodeURIComponent(this.userId)}/Items` +
-                `?IncludeItemTypes=Playlist&Recursive=true&SortBy=SortName&SortOrder=Ascending`,
+            this.listing(
+                `/Users/${encodeURIComponent(this.userId)}/Items`,
+                {
+                    IncludeItemTypes: "Playlist",
+                    Recursive: "true",
+                    SortBy: "SortName",
+                    SortOrder: "Ascending",
+                },
+            ),
         );
         return response.Items ?? [];
     }
@@ -314,8 +463,7 @@ export class JellyfinClient {
      */
     public async getPlaylistItems(playlistId: string): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Playlists/${encodeURIComponent(playlistId)}/Items` +
-                `?UserId=${encodeURIComponent(this.userId)}`,
+            this.listing(`/Playlists/${encodeURIComponent(playlistId)}/Items`, { UserId: this.userId }),
         );
         return (response.Items ?? []).filter(isSong);
     }
@@ -323,9 +471,15 @@ export class JellyfinClient {
     /** The tracks of one album. */
     public async getAlbumTracks(albumId: string): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Users/${encodeURIComponent(this.userId)}/Items` +
-                `?ParentId=${encodeURIComponent(albumId)}&IncludeItemTypes=Audio` +
-                `&SortBy=ParentIndexNumber,IndexNumber&SortOrder=Ascending`,
+            this.listing(
+                `/Users/${encodeURIComponent(this.userId)}/Items`,
+                {
+                    ParentId: albumId,
+                    IncludeItemTypes: "Audio",
+                    SortBy: "ParentIndexNumber,IndexNumber",
+                    SortOrder: "Ascending",
+                },
+            ),
         );
         return (response.Items ?? []).filter(isSong);
     }
@@ -333,9 +487,17 @@ export class JellyfinClient {
     /** What the user played most recently. */
     public async getRecentlyPlayed(limit = 20): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Users/${encodeURIComponent(this.userId)}/Items` +
-                `?Filters=IsPlayed&Recursive=true&SortBy=DatePlayed&SortOrder=Descending` +
-                `&Fields=DatePlayed&Limit=${limit}&IncludeItemTypes=MusicAlbum,Audio`,
+            this.listing(
+                `/Users/${encodeURIComponent(this.userId)}/Items`,
+                {
+                    Filters: "IsPlayed",
+                    Recursive: "true",
+                    SortBy: "DatePlayed",
+                    SortOrder: "Descending",
+                    IncludeItemTypes: "MusicAlbum,Audio",
+                    Limit: limit,
+                },
+            ),
         );
         return (response.Items ?? []).filter(isMusic);
     }
@@ -349,7 +511,7 @@ export class JellyfinClient {
      */
     public async getRecentlyAdded(limit = 20): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinBaseItemDto[]>(
-            `/Items/Latest?UserId=${encodeURIComponent(this.userId)}&Limit=${limit * 4}`,
+            this.listing(`/Items/Latest`, { UserId: this.userId, Limit: limit * 4 }),
         );
         return (Array.isArray(response) ? response : []).filter(isMusic).slice(0, limit);
     }
@@ -357,9 +519,15 @@ export class JellyfinClient {
     /** What the user marked as a favourite. */
     public async getFavourites(limit = 30): Promise<JellyfinBaseItemDto[]> {
         const response = await this.request<JellyfinItemsResponse>(
-            `/Users/${encodeURIComponent(this.userId)}/Items` +
-                `?Filters=IsFavorite&Recursive=true&Limit=${limit}` +
-                `&IncludeItemTypes=MusicAlbum,Audio,Playlist`,
+            this.listing(
+                `/Users/${encodeURIComponent(this.userId)}/Items`,
+                {
+                    Filters: "IsFavorite",
+                    Recursive: "true",
+                    IncludeItemTypes: "MusicAlbum,Audio,Playlist",
+                    Limit: limit,
+                },
+            ),
         );
         return (response.Items ?? []).filter(isMusic);
     }
@@ -371,10 +539,17 @@ export class JellyfinClient {
         );
     }
 
-    /** What the server can do with an item — direct play, or transcode. */
+    /**
+     * What the server can do with an item — direct play, or transcode.
+     *
+     * Cached out: the media sources a player reaches for are fresh per play,
+     * and a stale copy could point at a session that is no longer live.
+     */
     public async getPlaybackInfo(itemId: string): Promise<JellyfinPlaybackInfo> {
         return await this.request<JellyfinPlaybackInfo>(
             `/Items/${encodeURIComponent(itemId)}/PlaybackInfo?UserId=${encodeURIComponent(this.userId)}`,
+            undefined,
+            { cache: false },
         );
     }
 

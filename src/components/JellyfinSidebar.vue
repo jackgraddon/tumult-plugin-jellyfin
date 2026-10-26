@@ -30,17 +30,19 @@ const SECTIONS = [
         </button>
 
         <div class="jf-nav-footer">
-            <p class="jf-nav-server">
-                {{ state.serverName ?? "Jellyfin" }}<template v-if="state.userName"> · {{ state.userName }}</template>
-            </p>
             <button
                 v-if="state.connected"
                 type="button"
-                class="jf-button jf-button-quiet"
-                @click="jellyfin.disconnect()"
+                class="jf-nav-item"
+                :aria-current="state.view === 'settings' ? 'page' : undefined"
+                @click="jellyfin.setView('settings')"
             >
-                Disconnect
+                <span class="jf-nav-glyph" aria-hidden="true">⚙</span>
+                <span>Settings</span>
             </button>
+            <p class="jf-nav-server">
+                {{ state.serverName ?? "Jellyfin" }}<template v-if="state.userName"> · {{ state.userName }}</template>
+            </p>
         </div>
     </nav>
 </template>

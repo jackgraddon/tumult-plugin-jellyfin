@@ -10,18 +10,13 @@ import { reactive } from "vue";
 
 import { player } from "./audio.ts";
 import { JellyfinClient, normalizeBaseUrl, schemeProblem } from "./client.ts";
-import {
-    clearConfig,
-    deviceId,
-    loadConfig,
-    saveConfig,
-    type JellyfinAuthMethod,
-} from "./config.ts";
+import { clearConfig, deviceId, loadConfig, saveConfig, type JellyfinAuthMethod } from "./config.ts";
 import { clearSession, currentClient, setSession } from "./session.ts";
+import { cache } from "./cache.ts";
 import type { JellyfinBaseItemDto, JellyfinUserDto } from "./types.ts";
 
 /** The sections of the left nav. */
-export type JellyfinView = "home" | "artists" | "albums" | "playlists";
+export type JellyfinView = "home" | "artists" | "albums" | "playlists" | "settings";
 
 export interface JellyfinState {
     /** Which section the content area is showing. */
@@ -56,12 +51,22 @@ export interface JellyfinState {
     favourites: JellyfinBaseItemDto[];
     /** The artists. */
     artists: JellyfinBaseItemDto[];
+    /** How many artists the server reports behind the loaded window. */
+    artistsTotal: number;
+    /** Whether a later page of artists is loading. */
+    artistsLoadingMore: boolean;
     /** The albums (all of them, or the ones of the selected artist). */
     albums: JellyfinBaseItemDto[];
+    /** How many albums the server reports behind the loaded window. */
+    albumsTotal: number;
+    /** Whether a later page of albums is loading. */
+    albumsLoadingMore: boolean;
     /** The playlists. */
     playlists: JellyfinBaseItemDto[];
     /** The tracks of the open album or playlist. */
     tracks: JellyfinBaseItemDto[];
+    /** How much the library cache is using, in bytes. */
+    cacheBytes: number;
 }
 
 const state = reactive<JellyfinState>({
@@ -82,9 +87,14 @@ const state = reactive<JellyfinState>({
     recentAdded: [],
     favourites: [],
     artists: [],
+    artistsTotal: 0,
+    artistsLoadingMore: false,
     albums: [],
+    albumsTotal: 0,
+    albumsLoadingMore: false,
     playlists: [],
     tracks: [],
+    cacheBytes: 0,
 });
 
 /** The headings the sections use. */
@@ -93,6 +103,7 @@ const TITLES: Record<JellyfinView, string> = {
     artists: "Artists",
     albums: "Albums",
     playlists: "Playlists",
+    settings: "Settings",
 };
 
 /** An API key waiting for the user to say which account it should be. */
@@ -139,7 +150,12 @@ export const jellyfin = {
             state.connected = true;
             state.userName = config.userName;
             state.authMethod = config.authMethod;
-            state.serverName = await serverName(config.baseUrl);
+            // The server's name is not on the critical path to the first shelf,
+            // so it is fetched alongside the home shelves rather than before
+            // them — the name fills in when it arrives.
+            void serverName(config.baseUrl).then((name) => {
+                state.serverName = name;
+            });
             await loadHome();
         } catch {
             // The server moved, the token expired, the network is down — the
@@ -266,9 +282,10 @@ export const jellyfin = {
         else if (view === "artists") await loadArtists();
         else if (view === "albums") await loadAlbums();
         else if (view === "playlists") await loadPlaylists();
+        else if (view === "settings") state.cacheBytes = cache.bytes();
     },
 
-    /** Show one artist's albums. */
+    /** Show one artist's albums — a window of them, loading more as needed. */
     async openArtist(artist: JellyfinBaseItemDto): Promise<void> {
         state.view = "albums";
         state.artistId = artist.Id;
@@ -277,12 +294,55 @@ export const jellyfin = {
         state.title = artist.Name;
         state.busy = true;
         state.error = null;
+        state.albumsLoadingMore = false;
         try {
-            state.albums = (await client()?.getArtistAlbums(artist.Id)) ?? [];
+            const page = (await client()?.getArtistAlbums(artist.Id, { start: 0 })) ?? PAGED_EMPTY;
+            state.albums = page.items;
+            state.albumsTotal = page.total;
         } catch (error) {
             state.error = describe(error, "Could not load that artist's albums.");
         } finally {
             state.busy = false;
+        }
+    },
+
+    /** Load the next page of whatever the albums are showing. */
+    async loadMoreAlbums(): Promise<void> {
+        const api = client();
+        if (!api) return;
+        if (state.albumsLoadingMore || state.albums.length >= state.albumsTotal) return;
+        state.albumsLoadingMore = true;
+        state.error = null;
+        try {
+            const start = state.albums.length;
+            const next =
+                state.artistId === null ? api.getAlbums({ start }) : api.getArtistAlbums(state.artistId, { start });
+            const page = await next;
+            if (page.items.length > 0) state.albums.push(...page.items);
+            state.albumsTotal = page.total;
+        } catch (error) {
+            state.error = describe(error, "Could not load more albums.");
+        } finally {
+            state.albumsLoadingMore = false;
+        }
+    },
+
+    /** Load the next page of the artists. */
+    async loadMoreArtists(): Promise<void> {
+        const api = client();
+        if (!api) return;
+        if (state.artistsLoadingMore || state.artists.length >= state.artistsTotal) return;
+        state.artistsLoadingMore = true;
+        state.error = null;
+        try {
+            const start = state.artists.length;
+            const page = await api.getArtists({ start });
+            if (page.items.length > 0) state.artists.push(...page.items);
+            state.artistsTotal = page.total;
+        } catch (error) {
+            state.error = describe(error, "Could not load more artists.");
+        } finally {
+            state.artistsLoadingMore = false;
         }
     },
 
@@ -334,6 +394,46 @@ export const jellyfin = {
         }
     },
 
+    /**
+     * Re-load whatever the content area is showing, forgetting the cached
+     * copies first, so a stale library is not handed back — the explicit
+     * "Refresh" the Settings surface offers.
+     */
+    async refresh(): Promise<void> {
+        if (!state.connected) return;
+        cache.clear();
+        state.cacheBytes = 0;
+        switch (state.view) {
+            case "artists":
+                await loadArtists();
+                break;
+            case "albums":
+                // Whatever the albums are showing: all of them, or the open
+                // artist's. Reload that, not the wrong one.
+                if (state.artistId === null) {
+                    await loadAlbums();
+                } else {
+                    const artist = findArtist(state.artistId);
+                    if (artist) await this.openArtist(artist);
+                    else await loadAlbums();
+                }
+                break;
+            case "playlists":
+                await loadPlaylists();
+                break;
+            default:
+                await loadHome();
+                break;
+        }
+        state.cacheBytes = cache.bytes();
+    },
+
+    /** Empty the library cache. */
+    clearCache(): void {
+        cache.clear();
+        state.cacheBytes = 0;
+    },
+
     /** Play a track, queueing the album or playlist it came from. */
     async play(item: JellyfinBaseItemDto, context: JellyfinBaseItemDto[] = []): Promise<void> {
         const queue = context.length > 0 ? context : state.tracks.length > 0 ? state.tracks : [item];
@@ -355,6 +455,7 @@ function resetConnection(): void {
     player.clear();
     clearSession();
     clearConfig();
+    cache.clear();
     pendingApiKey = null;
     state.connected = false;
     state.userName = null;
@@ -369,12 +470,20 @@ function resetConnection(): void {
     state.recentAdded = [];
     state.favourites = [];
     state.artists = [];
+    state.artistsTotal = 0;
+    state.artistsLoadingMore = false;
     state.albums = [];
+    state.albumsTotal = 0;
+    state.albumsLoadingMore = false;
     state.playlists = [];
     state.tracks = [];
+    state.cacheBytes = 0;
     state.view = "home";
     state.title = TITLES.home;
 }
+
+/** An empty page, for when a client is not connected. */
+const PAGED_EMPTY = { items: [] as JellyfinBaseItemDto[], total: 0 };
 
 /** The artist with this id, if it has been loaded. */
 function findArtist(id: string): JellyfinBaseItemDto | undefined {
@@ -402,11 +511,11 @@ async function finish(
     state.userName = user.Name;
     state.authMethod = method;
     state.error = null;
-    try {
-        state.serverName = await serverName(baseUrl);
-    } catch {
-        state.serverName = null;
-    }
+    // As with `restore`, the server's name is off the critical path: fetch it
+    // alongside the first shelf rather than before it.
+    void serverName(baseUrl).then((name) => {
+        state.serverName = name;
+    });
     await loadHome();
 }
 
@@ -442,14 +551,17 @@ async function loadHome(): Promise<void> {
     }
 }
 
-/** Load the artists. */
+/** Load the artists — the first page, more following as the user scrolls. */
 async function loadArtists(): Promise<void> {
     const api = client();
     if (!api) return;
     state.busy = true;
     state.error = null;
+    state.artistsLoadingMore = false;
     try {
-        state.artists = await api.getArtists();
+        const page = await api.getArtists({ start: 0 });
+        state.artists = page.items;
+        state.artistsTotal = page.total;
     } catch (error) {
         state.error = describe(error, "Could not load your artists.");
     } finally {
@@ -457,14 +569,17 @@ async function loadArtists(): Promise<void> {
     }
 }
 
-/** Load the albums. */
+/** Load the albums — the first page, more following as the user scrolls. */
 async function loadAlbums(): Promise<void> {
     const api = client();
     if (!api) return;
     state.busy = true;
     state.error = null;
+    state.albumsLoadingMore = false;
     try {
-        state.albums = await api.getAlbums();
+        const page = await api.getAlbums({ start: 0 });
+        state.albums = page.items;
+        state.albumsTotal = page.total;
     } catch (error) {
         state.error = describe(error, "Could not load your albums.");
     } finally {

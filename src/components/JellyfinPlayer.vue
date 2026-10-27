@@ -7,6 +7,7 @@
  * this component only draws it.
  */
 import { computed } from "vue";
+import { Icon } from "@tumult/ui";
 
 import { formatTime, player } from "../jellyfin/audio.ts";
 import { currentClient } from "../jellyfin/session.ts";
@@ -60,7 +61,9 @@ function onVolume(event: Event): void {
                 :disabled="!state.current"
                 @click="player.previous()"
             >
-                <span aria-hidden="true">⏮</span>
+                <span aria-hidden="true">
+                    <Icon name="skip-previous" />
+                </span>
             </button>
             <button
                 type="button"
@@ -68,7 +71,9 @@ function onVolume(event: Event): void {
                 :aria-label="state.playing ? 'Pause' : 'Play'"
                 @click="player.toggle()"
             >
-                <span aria-hidden="true">{{ state.playing ? "⏸" : "▶" }}</span>
+                <span aria-hidden="true">
+                    <Icon :name="state.playing ? 'pause' : 'play'" />
+                </span>
             </button>
             <button
                 type="button"
@@ -77,14 +82,18 @@ function onVolume(event: Event): void {
                 :disabled="!state.current"
                 @click="player.next()"
             >
-                <span aria-hidden="true">⏭</span>
+                <span aria-hidden="true">
+                    <Icon name="skip-next" />
+                </span>
             </button>
         </div>
 
         <div class="jf-player-now">
             <span class="jf-player-art">
                 <img v-if="hasArt" :src="art" alt="" decoding="async" />
-                <span v-else aria-hidden="true">♪</span>
+                <span v-else aria-hidden="true">
+                    <Icon name="music-note" />
+                </span>
             </span>
             <span class="jf-player-text">
                 <span class="jf-player-title">{{ title }}</span>
@@ -101,7 +110,9 @@ function onVolume(event: Event): void {
                 :aria-expanded="state.queueOpen"
                 @click="state.queueOpen = !state.queueOpen"
             >
-                <span aria-hidden="true">☰</span>
+                <span aria-hidden="true">
+                    <Icon name="menu" />
+                </span>
             </button>
             <input
                 class="jf-range jf-volume"

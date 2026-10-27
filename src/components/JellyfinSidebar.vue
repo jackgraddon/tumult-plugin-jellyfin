@@ -2,15 +2,16 @@
 /**
  * The pane's left nav — the slot the channel list normally occupies.
  */
+import { Icon } from "@tumult/ui";
 import { jellyfin } from "../jellyfin/store.ts";
 
 const state = jellyfin.state;
 
 const SECTIONS = [
-    { view: "home", label: "Home", glyph: "🏠" },
-    { view: "artists", label: "Artists", glyph: "🎤" },
-    { view: "albums", label: "Albums", glyph: "💿" },
-    { view: "playlists", label: "Playlists", glyph: "🎧" },
+    { view: "home", label: "Home", glyph: "home" },
+    { view: "artists", label: "Artists", glyph: "microphone" },
+    { view: "albums", label: "Albums", glyph: "album" },
+    { view: "playlists", label: "Playlists", glyph: "playlist-music" },
 ] as const;
 </script>
 
@@ -25,7 +26,9 @@ const SECTIONS = [
             :aria-current="state.view === section.view ? 'page' : undefined"
             @click="jellyfin.setView(section.view)"
         >
-            <span class="jf-nav-glyph" aria-hidden="true">{{ section.glyph }}</span>
+            <span class="jf-nav-glyph" aria-hidden="true">
+                <Icon :name="section.glyph" />
+            </span>
             <span>{{ section.label }}</span>
         </button>
 
@@ -37,7 +40,9 @@ const SECTIONS = [
                 :aria-current="state.view === 'settings' ? 'page' : undefined"
                 @click="jellyfin.setView('settings')"
             >
-                <span class="jf-nav-glyph" aria-hidden="true">⚙</span>
+                <span class="jf-nav-glyph" aria-hidden="true">
+                    <Icon name="cog" />
+                </span>
                 <span>Settings</span>
             </button>
             <p class="jf-nav-server">

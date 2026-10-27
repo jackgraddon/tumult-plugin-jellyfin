@@ -54,7 +54,7 @@ export const plugin: Plugin = {
         ctx.addPane({
             id: "com.jackgraddon.tumult.jellyfin",
             label: "Jellyfin",
-            icon: "🎵",
+            icon: "music-note",
             content: JellyfinContent,
             sidebar: JellyfinSidebar,
             footer: JellyfinPlayer,

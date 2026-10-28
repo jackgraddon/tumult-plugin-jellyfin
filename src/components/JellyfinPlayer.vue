@@ -7,12 +7,13 @@
  * this component only draws it.
  */
 import { computed } from "vue";
-import { Icon } from "@tumult/ui";
+import { mdiMenu, mdiMusicNote, mdiPause, mdiPlay, mdiSkipNext, mdiSkipPrevious } from "@mdi/js";
 
 import { formatTime, player } from "../jellyfin/audio.ts";
 import { currentClient } from "../jellyfin/session.ts";
 import { ticksToSeconds } from "../jellyfin/types.ts";
 
+import Icon from "./Icon.vue";
 import JellyfinQueue from "./JellyfinQueue.vue";
 
 const state = player.state;
@@ -62,7 +63,7 @@ function onVolume(event: Event): void {
                 @click="player.previous()"
             >
                 <span aria-hidden="true">
-                    <Icon name="skip-previous" />
+                    <Icon :path="mdiSkipPrevious" />
                 </span>
             </button>
             <button
@@ -72,7 +73,7 @@ function onVolume(event: Event): void {
                 @click="player.toggle()"
             >
                 <span aria-hidden="true">
-                    <Icon :name="state.playing ? 'pause' : 'play'" />
+                    <Icon :path="state.playing ? mdiPause : mdiPlay" />
                 </span>
             </button>
             <button
@@ -83,7 +84,7 @@ function onVolume(event: Event): void {
                 @click="player.next()"
             >
                 <span aria-hidden="true">
-                    <Icon name="skip-next" />
+                    <Icon :path="mdiSkipNext" />
                 </span>
             </button>
         </div>
@@ -92,7 +93,7 @@ function onVolume(event: Event): void {
             <span class="jf-player-art">
                 <img v-if="hasArt" :src="art" alt="" decoding="async" />
                 <span v-else aria-hidden="true">
-                    <Icon name="music-note" />
+                    <Icon :path="mdiMusicNote" />
                 </span>
             </span>
             <span class="jf-player-text">
@@ -111,7 +112,7 @@ function onVolume(event: Event): void {
                 @click="state.queueOpen = !state.queueOpen"
             >
                 <span aria-hidden="true">
-                    <Icon name="menu" />
+                    <Icon :path="mdiMenu" />
                 </span>
             </button>
             <input

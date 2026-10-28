@@ -390,9 +390,16 @@ export const STYLESHEET = `
     font-weight: var(--weight-semibold);
 }
 
+.jf-icon {
+    display: block;
+    width: 1.25em;
+    height: 1.25em;
+}
+
 .jf-nav-glyph {
+    display: inline-flex;
+    justify-content: center;
     width: var(--icon-md);
-    text-align: center;
 }
 
 .jf-nav-footer {
